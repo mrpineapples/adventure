@@ -31,6 +31,70 @@ type Option struct {
 	Chapter string `json:"arc"`
 }
 
+// HandlerOption enables custom options to be passed to NewHandler
+type HandlerOption func(h *handler)
+
+// WithTemplate is a function that accepts a custom template and applies it the adventure story
+func WithTemplate(t *template.Template) HandlerOption {
+	return func(h *handler) {
+		h.t = t
+	}
+}
+
+// WithPathFunc allows custom story path parsing
+func WithPathFunc(fn func(r *http.Request) string) HandlerOption {
+	return func(h *handler) {
+		h.pathFn = fn
+	}
+}
+
+type handler struct {
+	s      Story
+	t      *template.Template
+	pathFn func(r *http.Request) string
+}
+
+// NewHandler returns a handler containing a story
+func NewHandler(s Story, opts ...HandlerOption) http.Handler {
+	h := handler{s, tpl, deafultPathFn}
+	for _, opt := range opts {
+		opt(&h)
+	}
+	return h
+}
+
+func deafultPathFn(r *http.Request) string {
+	path := strings.TrimSpace(r.URL.Path)
+	if path == "" || path == "/" {
+		path = "/intro"
+	}
+	return path[1:]
+}
+
+func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := h.pathFn(r)
+
+	if chapter, ok := h.s[path]; ok {
+		err := h.t.Execute(w, chapter)
+		if err != nil {
+			log.Printf("%v", err)
+			http.Error(w, "Something went wrong...", http.StatusInternalServerError)
+		}
+		return
+	}
+	http.Error(w, "Chapter not found.", http.StatusNotFound)
+}
+
+// JSONStory returns the decoded story
+func JSONStory(r io.Reader) (Story, error) {
+	d := json.NewDecoder(r)
+	var story Story
+	if err := d.Decode(&story); err != nil {
+		return nil, err
+	}
+	return story, nil
+}
+
 var defaultHandlerTmpl = `
 	<!DOCTYPE html>
 	<html lang="en">
@@ -95,66 +159,3 @@ var defaultHandlerTmpl = `
 		</body>
 	</html>
 `
-
-// HandlerOption enables custom options to be passed to NewHandler
-type HandlerOption func(h *handler)
-
-// WithTemplate is a function that accepts a custom template and applies it the adventure story
-func WithTemplate(t *template.Template) HandlerOption {
-	return func(h *handler) {
-		h.t = t
-	}
-}
-
-func WithPathFunc(fn func(r *http.Request) string) HandlerOption {
-	return func(h *handler) {
-		h.pathFn = fn
-	}
-}
-
-// NewHandler returns a handler containing a story
-func NewHandler(s Story, opts ...HandlerOption) http.Handler {
-	h := handler{s, tpl, deafultPathFn}
-	for _, opt := range opts {
-		opt(&h)
-	}
-	return h
-}
-
-type handler struct {
-	s      Story
-	t      *template.Template
-	pathFn func(r *http.Request) string
-}
-
-func deafultPathFn(r *http.Request) string {
-	path := strings.TrimSpace(r.URL.Path)
-	if path == "" || path == "/" {
-		path = "/intro"
-	}
-	return path[1:]
-}
-
-func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := h.pathFn(r)
-
-	if chapter, ok := h.s[path]; ok {
-		err := h.t.Execute(w, chapter)
-		if err != nil {
-			log.Printf("%v", err)
-			http.Error(w, "Something went wrong...", http.StatusInternalServerError)
-		}
-		return
-	}
-	http.Error(w, "Chapter not found.", http.StatusNotFound)
-}
-
-// JSONStory returns the decoded story
-func JSONStory(r io.Reader) (Story, error) {
-	d := json.NewDecoder(r)
-	var story Story
-	if err := d.Decode(&story); err != nil {
-		return nil, err
-	}
-	return story, nil
-}
