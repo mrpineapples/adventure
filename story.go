@@ -96,8 +96,10 @@ var defaultHandlerTmpl = `
 	</html>
 `
 
+// HandlerOption enables custom options to be passed to NewHandler
 type HandlerOption func(h *handler)
 
+// WithTemplate is a function that accepts a custom template and applies it the adventure story
 func WithTemplate(t *template.Template) HandlerOption {
 	return func(h *handler) {
 		h.t = t
